@@ -1,9 +1,16 @@
 resource "aws_s3_bucket" "access_logging" {
   bucket_prefix = var.name
-  acl    = "private"
   force_destroy = true
 
   count = var.no_access_logs && (var.no_deletion_protection || var.older_ssl_policy) ? 1 : 0
+  # Removed 'acl = "private"' as it's deprecated. Using aws_s3_bucket_acl instead.
+}
+
+resource "aws_s3_bucket_acl" "access_logging_acl" {
+  bucket = aws_s3_bucket.access_logging[0].id
+  acl    = "private"
+  count = var.no_access_logs && (var.no_deletion_protection || var.older_ssl_policy) ? 1 : 0
+  # Sets the ACL for the access logging S3 bucket to private.
 }
 
 resource "aws_lb" "main" {

@@ -2,6 +2,7 @@ resource "aws_db_subnet_group" "default" {
   name       = "main"
   subnet_ids = [var.main_subnet_id, var.secondary_subnet_id]
   count = (var.no_minor_upgrade || var.rds_publicly_accessible || var.backup_disabled || var.storage_not_encrypted || var.single_az) ? 1 : 0
+  # Creates a DB subnet group if any of the specified conditions are met.
 }
 
 resource "aws_db_instance" "main" {
@@ -9,7 +10,7 @@ resource "aws_db_instance" "main" {
   storage_type         = "gp2"
   engine               = "mysql"
   instance_class       = "db.t2.micro"
-  name                 = var.name
+  identifier           = var.name # Changed from "name" to "identifier" - 'name' is not a valid argument for aws_db_instance.
   username             = "foo"
   password             = "foobarbaz"
   skip_final_snapshot = true
@@ -23,4 +24,6 @@ resource "aws_db_instance" "main" {
   publicly_accessible = var.rds_publicly_accessible
 
   count = (var.no_minor_upgrade || var.rds_publicly_accessible || var.backup_disabled || var.storage_not_encrypted || var.single_az) ? 1 : 0
+  # Creates an RDS instance if any of the specified conditions are met.
+  # 'identifier' is used to set the name of the RDS instance.
 }
