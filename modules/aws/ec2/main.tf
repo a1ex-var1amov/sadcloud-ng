@@ -15,19 +15,130 @@ data "aws_ami" "ubuntu" {
   owners = ["099720109477"] # Canonical
 }
 
-resource "aws_instance" "main" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = var.disallowed_instance_type ? "t2.micro" : "t2.small"
-  subnet_id     = var.main_subnet_id
-  count         = var.disallowed_instance_type || var.instance_with_user_data_secrets || var.instance_with_public_ip ? 1 : 0
+# Use an old, potentially vulnerable AMI
+data "aws_ami" "old_ubuntu" {
+  most_recent = false  # Dangerous: Use old AMI
 
-
-  associate_public_ip_address = var.instance_with_public_ip
-  user_data                   = var.instance_with_user_data_secrets ? "password,AKIAIOSFODNN7EXAMPLE" : null
-
-  tags = {
-    Name = var.name
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-xenial-16.04-amd64-server*"]  # Old Ubuntu version
   }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"] # Canonical
+}
+
+# Main EC2 instance with security misconfigurations
+resource "aws_instance" "main" {
+  count = var.create_insecure_instance ? 1 : 0
+
+  # Instance Configuration
+  ami                    = var.use_old_ami ? data.aws_ami.old_ubuntu.id : data.aws_ami.ubuntu.id
+  instance_type          = var.disallowed_instance_type ? "t2.micro" : "t2.small"
+  subnet_id              = var.main_subnet_id
+  iam_instance_profile   = var.create_overly_permissive_role ? aws_iam_instance_profile.overly_permissive[0].name : null
+  key_name              = var.ssh_key_name
+  
+  # Network Configuration
+  associate_public_ip_address = true  # Dangerous: Always public IP
+  source_dest_check          = false  # Dangerous: Disable source/dest check
+  
+  # Root Volume Configuration
+  root_block_device {
+    encrypted   = false      # Dangerous: No encryption
+    volume_size = 100       # Oversized volume
+    volume_type = "gp2"
+    delete_on_termination = false  # Dangerous: Keep volumes after instance termination
+  }
+
+  # Additional EBS Volume (also unencrypted)
+  ebs_block_device {
+    device_name = "/dev/sdf"
+    volume_size = 50
+    volume_type = "gp2"
+    encrypted   = false      # Dangerous: No encryption
+    snapshot_id = null       # No snapshot backup
+  }
+
+  # User Data with sensitive information
+  user_data = var.instance_with_user_data_secrets ? <<-EOF
+              #!/bin/bash
+              echo "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE" >> /etc/environment
+              echo "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" >> /etc/environment
+              echo "DATABASE_PASSWORD=admin123" >> /etc/environment
+              apt-get update
+              apt-get install -y mysql-server
+              mysql -e "CREATE USER 'admin'@'%' IDENTIFIED BY 'admin123';"
+              mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'%';"
+              sed -i 's/bind-address.*/bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf
+              service mysql restart
+              EOF
+              : null
+
+  # Dangerous: No monitoring
+  monitoring = false
+
+  # Misleading tags
+  tags = {
+    Name        = var.name
+    Environment = "development"
+    Confidential = "false"
+    Backup      = "false"
+  }
+
+  # Dangerous: Associate with multiple security groups
+  vpc_security_group_ids = concat(
+    var.security_group_opens_all_ports_to_all ? [aws_security_group.all_ports_to_all[0].id] : [],
+    var.security_group_opens_known_port_to_all ? [aws_security_group.known_port_to_all[0].id] : [],
+    var.security_group_opens_plaintext_port ? [aws_security_group.opens_plaintext_port[0].id] : []
+  )
+}
+
+# Overly permissive IAM role
+resource "aws_iam_role" "overly_permissive" {
+  count = var.create_overly_permissive_role ? 1 : 0
+  name  = "${var.name}-overly-permissive-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Dangerous: Allow all AWS actions
+resource "aws_iam_role_policy" "overly_permissive" {
+  count = var.create_overly_permissive_role ? 1 : 0
+  name  = "${var.name}-overly-permissive-policy"
+  role  = aws_iam_role.overly_permissive[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = "*"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "overly_permissive" {
+  count = var.create_overly_permissive_role ? 1 : 0
+  name  = "${var.name}-overly-permissive-profile"
+  role  = aws_iam_role.overly_permissive[0].name
 }
 
 # Security Groups
@@ -449,5 +560,109 @@ resource "aws_security_group" "overlapping_security_group" {
     to_port     = 0
     protocol    = -1
     cidr_blocks = ["162.168.2.0/25"]
+  }
+}
+
+# New: Security group allowing all internal traffic
+resource "aws_security_group" "allow_internal" {
+  count = var.enable_unsafe_internal_access ? 1 : 0
+  name  = "${var.name}-allow-internal"
+  vpc_id = var.vpc_id
+
+  ingress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    cidr_blocks = [var.vpc_cidr]  # Allow all internal traffic
+  }
+
+  egress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# New: Security group with common misconfigurations
+resource "aws_security_group" "common_misconfigs" {
+  count = var.enable_common_misconfigs ? 1 : 0
+  name  = "${var.name}-common-misconfigs"
+  vpc_id = var.vpc_id
+
+  # Allow MySQL from anywhere
+  ingress {
+    from_port = 3306
+    to_port   = 3306
+    protocol  = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow Redis from anywhere
+  ingress {
+    from_port = 6379
+    to_port   = 6379
+    protocol  = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow MongoDB from anywhere
+  ingress {
+    from_port = 27017
+    to_port   = 27017
+    protocol  = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow Elasticsearch from anywhere
+  ingress {
+    from_port = 9200
+    to_port   = 9300
+    protocol  = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Optional: Launch Template with insecure configurations
+resource "aws_launch_template" "insecure" {
+  count = var.create_insecure_launch_template ? 1 : 0
+  
+  name = "${var.name}-insecure-template"
+  
+  image_id = data.aws_ami.old_ubuntu.id
+  instance_type = "t2.micro"
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups = concat(
+      var.security_group_opens_all_ports_to_all ? [aws_security_group.all_ports_to_all[0].id] : [],
+      var.security_group_opens_known_port_to_all ? [aws_security_group.known_port_to_all[0].id] : []
+    )
+  }
+
+  user_data = base64encode(<<-EOF
+              #!/bin/bash
+              echo "MYSQL_ROOT_PASSWORD=password123" >> /etc/environment
+              apt-get update
+              apt-get install -y mysql-server
+              mysql -e "CREATE USER 'root'@'%' IDENTIFIED BY 'password123';"
+              mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%';"
+              EOF
+  )
+
+  monitoring {
+    enabled = false
+  }
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "optional"  # Dangerous: Don't require IMDSv2
   }
 }

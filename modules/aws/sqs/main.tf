@@ -1,30 +1,87 @@
+resource "aws_sqs_queue" "dlq" {
+  count = var.disable_dlq ? 0 : 1
+
+  name = "${var.name}-dlq"
+
+  # Minimal configuration for DLQ
+  visibility_timeout_seconds = var.visibility_timeout
+  message_retention_seconds  = var.no_message_retention ? 60 : var.message_retention_seconds
+  receive_wait_time_seconds = var.long_polling_disabled ? 0 : 20
+  
+  # Intentionally disable encryption for DLQ if specified
+  sqs_managed_sse_enabled = !var.unencrypted
+
+  tags = var.tags
+}
+
 resource "aws_sqs_queue" "main" {
   name = var.name
 
-  kms_master_key_id  = var.sqs_server_side_encryption_disabled ? null : "alias/aws/sqs"
-  kms_data_key_reuse_period_seconds = var.sqs_server_side_encryption_disabled ? null : 300
+  # Queue configuration with potential misconfigurations
+  visibility_timeout_seconds = var.visibility_timeout
+  message_retention_seconds  = var.short_retention ? 60 : var.message_retention_seconds
+  receive_wait_time_seconds = var.long_polling_disabled ? 0 : 20
+  delay_seconds            = var.delay_seconds
+  max_message_size        = var.max_message_size
 
-  count = (var.queue_world_policy || var.sqs_server_side_encryption_disabled) ? 1 : 0
+  # Intentionally disable encryption if specified
+  sqs_managed_sse_enabled = !var.unencrypted
+
+  # Dead letter queue configuration
+  redrive_policy = var.disable_dlq ? null : jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq[0].arn
+    maxReceiveCount     = var.max_receive_count
+  })
+
+  tags = var.tags
 }
 
+# Create a policy that potentially allows public access
 resource "aws_sqs_queue_policy" "main" {
-  queue_url = aws_sqs_queue.main[0].id
+  count = var.public_access || var.allow_all_actions ? 1 : 0
 
-  count = var.queue_world_policy ? 1 : 0
+  queue_url = aws_sqs_queue.main.url
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicAccess"
+        Effect    = "Allow"
+        Principal = var.public_access ? { AWS = "*" } : { AWS = data.aws_caller_identity.current.account_id }
+        Action    = var.allow_all_actions ? ["sqs:*"] : [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
+        ]
+        Resource  = aws_sqs_queue.main.arn
+      }
+    ]
+  })
+}
 
-  policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Id": "sqspolicy",
-  "Statement": [
-    {
-      "Sid": "First",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "sqs:*",
-      "Resource": "${aws_sqs_queue.main[0].arn}"
-    }
-  ]
+# Optional weak KMS key configuration
+resource "aws_kms_key" "weak_key" {
+  count = var.weak_kms_key ? 1 : 0
+
+  description = "Weak KMS key for SQS encryption"
+  
+  # Misconfigured key policy allowing broad access
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "Enable IAM User Permissions"
+        Effect    = "Allow"
+        Principal = { AWS = "*" }
+        Action    = "kms:*"
+        Resource  = "*"
+      }
+    ]
+  })
+
+  # Weak key rotation configuration
+  enable_key_rotation = false
 }
-POLICY
-}
+
+data "aws_caller_identity" "current" {}

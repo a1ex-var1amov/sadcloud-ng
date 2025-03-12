@@ -4,6 +4,37 @@ variable "name" {
   default     = "sadcloud"
 }
 
+variable "pgp_key" {
+  description = "Base-64 encoded PGP public key for encrypting user credentials"
+  type        = string
+  default     = "keybase:test"  # WARNING: This is for testing only!
+}
+
+# Dangerous user creation variables
+variable "create_dangerous_user" {
+  description = "Whether to create a user with dangerous permissions"
+  type        = bool
+  default     = false
+}
+
+variable "create_dangerous_role" {
+  description = "Whether to create a role with dangerous trust relationships"
+  type        = bool
+  default     = false
+}
+
+variable "create_dangerous_group" {
+  description = "Whether to create a group with dangerous permissions"
+  type        = bool
+  default     = false
+}
+
+variable "create_user_with_hardcoded_creds" {
+  description = "Whether to create a user with hardcoded credentials (dangerous!)"
+  type        = bool
+  default     = false
+}
+
 ############## Findings ##############
 
 variable "password_policy_minimum_length" {

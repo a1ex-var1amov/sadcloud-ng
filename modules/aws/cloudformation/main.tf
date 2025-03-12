@@ -1,9 +1,27 @@
 resource "aws_cloudformation_stack" "main" {
-  name = var.name
+  count = var.stack_with_role ? 1 : 0
+  name  = var.name
 
   template_body = file("${path.root}/static/S3_Website_Bucket.yaml")
-  iam_role_arn = aws_iam_role.main[0].arn
-  count = var.stack_with_role ? 1 : 0
+  iam_role_arn  = aws_iam_role.main[0].arn
+
+  capabilities = [
+    "CAPABILITY_IAM",
+    "CAPABILITY_NAMED_IAM",
+    "CAPABILITY_AUTO_EXPAND"
+  ]
+
+  disable_rollback = true
+
+  parameters = {
+    Environment = "dev"
+    DBPassword = "insecure123!"
+  }
+
+  tags = {
+    Environment = "dev"
+    Security    = "none"
+  }
 
   depends_on = [
     aws_iam_role.main,
@@ -12,51 +30,64 @@ resource "aws_cloudformation_stack" "main" {
 }
 
 resource "aws_cloudformation_stack" "secret" {
-  name = "sadcloud-secret-stack"
+  count = var.stack_with_secret_output ? 1 : 0
+  name  = "sadcloud-secret-stack"
 
   template_body = file("${path.root}/static/Secret_Output.yaml")
-  count = var.stack_with_secret_output ? 1 : 0
+
+  parameters = {
+    SecretKey = var.secret_key
+    ApiToken  = var.api_token
+  }
 }
 
+resource "aws_cloudformation_stack" "direct" {
+  count = var.enable_direct_updates ? 1 : 0
+  name  = "sadcloud-direct-stack"
+
+  template_body = file("${path.root}/static/Direct_Update.yaml")
+  
+  on_failure = "DO_NOTHING"
+}
 
 resource "aws_iam_role" "main" {
-  name = var.name
   count = var.stack_with_role ? 1 : 0
+  name  = var.name
 
-  assume_role_policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Action": "sts:AssumeRole",
-      "Principal": {
-        "Service": "cloudformation.amazonaws.com"
-      },
-      "Effect": "Allow",
-      "Sid": ""
-    }
-  ]
-}
-EOF
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudformation.amazonaws.com"
+          AWS     = "*"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Purpose = "insecure-cloudformation"
+  }
 }
 
 resource "aws_iam_role_policy" "main" {
-  name = var.name
-  role = aws_iam_role.main[0].id
   count = var.stack_with_role ? 1 : 0
+  name  = var.name
+  role  = aws_iam_role.main[0].id
 
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Action": [
-        "s3:*"
-      ],
-      "Effect": "Allow",
-      "Resource": "*"
-    }
-  ]
-}
-EOF
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }

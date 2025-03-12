@@ -1,65 +1,95 @@
 variable "name" {
-  description = "bucket name"
+  description = "Bucket name prefix"
   type        = string
   default     = "sadcloud"
 }
 
 variable "logging_bucket" {
-  description = "Logging bucket used for this bucket"
+  description = "Target bucket for access logs"
   type        = string
-  default     = "sadcloud_logs"
+  default     = "sadcloud-logs"
 }
 
 variable "bucket_acl" {
-  description = "Canned acl"
+  description = "Canned ACL to apply to the bucket"
   type        = string
-  default     = "log-delivery-write"
+  default     = "public-read"  # Dangerous: Makes bucket public
 }
 
 variable "sse_algorithm" {
-  description = "Encryption algorithm to use"
+  description = "Server-side encryption algorithm"
   type        = string
-  default     = "AES256"
+  default     = "AES256"  # Could be more secure with KMS
 }
 
 variable "allow_cleartext" {
-  description = "should the bucket allow HTTP"
+  description = "Allow non-SSL access"
   type        = bool
   default     = false
 }
 
 variable "no_default_encryption" {
-  description = "should the bucket disable encryption"
+  description = "Disable default encryption"
   type        = bool
   default     = false
 }
 
 variable "no_logging" {
-  description = "should the bucket disable logging"
+  description = "Disable access logging"
   type        = bool
   default     = false
 }
 
 variable "no_versioning" {
-  description = "should the bucket disable versioning"
+  description = "Disable versioning"
   type        = bool
   default     = false
 }
 
 variable "website_enabled" {
-  description = "should the bucket enable the website"
+  description = "Enable static website hosting"
   type        = bool
   default     = false
 }
 
 variable "s3_getobject_only" {
-  description = "internet accessible s3 bucket (only GetObject)"
+  description = "Allow public GetObject access only"
   type        = bool
   default     = false
 }
 
 variable "s3_public" {
-  description = "internet accessible s3 bucket"
+  description = "Allow all public access"
+  type        = bool
+  default     = false
+}
+
+variable "enable_public_access" {
+  description = "Allow public access to the bucket"
+  type        = bool
+  default     = false
+}
+
+variable "enable_dangerous_policy" {
+  description = "Apply overly permissive bucket policy"
+  type        = bool
+  default     = false
+}
+
+variable "enable_unsafe_cors" {
+  description = "Enable dangerous CORS configuration"
+  type        = bool
+  default     = false
+}
+
+variable "enable_unsafe_lifecycle" {
+  description = "Enable dangerous lifecycle rules"
+  type        = bool
+  default     = false
+}
+
+variable "enable_unsafe_replication" {
+  description = "Enable replication with security issues"
   type        = bool
   default     = false
 }
