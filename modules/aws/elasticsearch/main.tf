@@ -5,7 +5,7 @@ resource "aws_elasticsearch_domain" "main" {
   elasticsearch_version = "6.0"
 
   cluster_config {
-    instance_type = "t2.small.elasticsearch"
+    instance_type = "t3.large.elasticsearch"
   }
 
   ebs_options {

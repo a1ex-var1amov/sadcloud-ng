@@ -1,9 +1,14 @@
 resource "aws_s3_bucket" "access_logging" {
   bucket_prefix = var.name
-  acl    = "private"
   force_destroy = true
 
   count = var.no_access_logs && (var.no_deletion_protection || var.older_ssl_policy) ? 1 : 0
+}
+
+resource "aws_s3_bucket_acl" "access_logging" {
+  bucket = aws_s3_bucket.access_logging[0].id
+  acl    = "private"
+  count  = var.no_access_logs && (var.no_deletion_protection || var.older_ssl_policy) ? 1 : 0
 }
 
 resource "aws_lb" "main" {

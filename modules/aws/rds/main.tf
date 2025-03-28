@@ -8,8 +8,9 @@ resource "aws_db_instance" "main" {
   allocated_storage    = 20
   storage_type         = "gp2"
   engine               = "mysql"
-  instance_class       = "db.t2.micro"
-  name                 = var.name
+  engine_version       = "8.0.35"
+  instance_class       = "db.t3.large"
+  db_name             = var.name
   username             = "foo"
   password             = "foobarbaz"
   skip_final_snapshot = true

@@ -1,7 +1,7 @@
 resource "aws_eks_cluster" "example" {
   name     = "example"
   role_arn = aws_iam_role.main.arn
-  version =  var.out_of_date ? "1.14" : null
+  version  = var.out_of_date ? "1.31" : null
 
   vpc_config {
     subnet_ids =  ["${var.main_subnet_id}","${var.secondary_subnet_id}"]

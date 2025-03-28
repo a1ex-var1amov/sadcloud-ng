@@ -17,7 +17,7 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_instance" "main" {
   ami           = data.aws_ami.ubuntu.id
-  instance_type = var.disallowed_instance_type ? "t2.micro" : "t2.small"
+  instance_type = var.disallowed_instance_type ? "t3.large" : "t3.large"
   subnet_id     = var.main_subnet_id
   count         = var.disallowed_instance_type || var.instance_with_user_data_secrets || var.instance_with_public_ip ? 1 : 0
 

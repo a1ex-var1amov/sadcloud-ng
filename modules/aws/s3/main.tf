@@ -1,6 +1,5 @@
 resource "aws_s3_bucket" "main" {
   bucket_prefix = var.name
-  acl    = "private"
   force_destroy = true
 
   dynamic "server_side_encryption_configuration" {
@@ -24,11 +23,6 @@ resource "aws_s3_bucket" "main" {
     }
   }
 
-  versioning {
-      enabled = var.no_versioning ? false : true
-      mfa_delete = false
-  }
-
   dynamic "website" {
     for_each = var.website_enabled ? [] : tolist([var.website_enabled])
 
@@ -38,12 +32,41 @@ resource "aws_s3_bucket" "main" {
   }
 }
 
+resource "aws_s3_bucket_ownership_controls" "main" {
+  bucket = aws_s3_bucket.main.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "main" {
+  bucket = aws_s3_bucket.main.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "main" {
+  bucket = aws_s3_bucket.main.id
+  versioning_configuration {
+    status = var.no_versioning ? "Disabled" : "Enabled"
+    mfa_delete = "Disabled"
+  }
+}
+
 resource "aws_s3_bucket" "logging" {
   bucket_prefix = var.name
-  acl    = var.bucket_acl
   force_destroy = true
 
   count = var.no_logging ? 0 : 1
+}
+
+resource "aws_s3_bucket_acl" "logging" {
+  bucket = aws_s3_bucket.logging[0].id
+  acl    = var.bucket_acl
+  count  = var.no_logging ? 0 : 1
 }
 
 data "aws_iam_policy_document" "force_ssl_only_access" {
